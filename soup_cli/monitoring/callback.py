@@ -25,6 +25,7 @@ class SoupTrainerCallback(TrainerCallback):
     def __init__(
         self,
         display: TrainingDisplay,
+        tool_output_buffer: Optional[ToolOutputsBuffer] = None,
         tracker: Optional[object] = None,
         run_id: str = "",
         eval_config: Optional[object] = None,
@@ -43,6 +44,7 @@ class SoupTrainerCallback(TrainerCallback):
         grad_accum_current_batch: int = 1,
     ):
         self.display = display
+        self.tool_output_buffer = tool_output_buffer
         self.tracker = tracker
         self.run_id = run_id
         self.eval_config = eval_config
@@ -185,7 +187,25 @@ class SoupTrainerCallback(TrainerCallback):
                 speed=speed,
                 gpu_mem=gpu_mem,
             )
-
+            
+    def on_evaluate(
+        self, args: TrainingArguments, state: TrainerState,
+        control: TrainerControl, metrics=None, **kwargs
+    ):
+        if metrics is None or self.tool_output_buffer is None:
+            return
+        tool_calls = metrics.get("tool_calls", [])
+        
+        for call in tool_calls:
+            self.tool_output_buffer.record_call(
+                name=call.get("name", "unknown"),
+                started_ts=float(call.get("started_ts", 0.0)),
+                duration_ms=float(call.get("duration_ms", 0.0)),
+                success=bool(call.get("success", True)),
+                output_preview=str(call.get("output", ""))[:100],
+                error=call.get("error")
+            )
+            
     def on_epoch_end(
         self, args: TrainingArguments, state: TrainerState,
         control: TrainerControl, **kwargs,
